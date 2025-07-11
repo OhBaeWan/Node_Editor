@@ -8,7 +8,7 @@ from imgui_bundle import (
 )
 
 class IdProvider:
-    """A simple utility to obtain unique ids, and to be able to restore them at each frame"""
+    """A simple utility to obtain unique ids"""
 
     _next_id: int = 1
 
@@ -19,7 +19,7 @@ class IdProvider:
         return r
 
     def reset(self):
-        """Resets the counter (called at each frame)"""
+        """Resets the counter"""
         self._next_id = 1
 
 
@@ -45,15 +45,15 @@ class ImGuiEx:
 
 # Struct to hold basic information about connection between
 # pins. Note that connection (aka. link) has its own ID.
-# This is useful later with dealing with selections, deletion
-# or other operations.
 @dataclass
 class LinkInfo:
     id: ed.LinkId
     input_id: ed.PinId
     output_id: ed.PinId
+    input_node: 'Node'
+    output_node: 'Node'
     valid: bool = True  # Flag to indicate if the link is valid
-    count: int = 0  # Counter to track the last count from the output pin
+    count: int = -1  # Counter to track the last count from the output pin
 
 
 class Pin:
@@ -106,24 +106,22 @@ class Pin:
         """Check if this pin is an input pin"""
         return self.kind == ed.PinKind.input
 
-    def on_input_update(self, nodes: List['Node']):
+    def on_input_update(self):
         """Update the pin based on input from connected nodes"""
-        # This method can be used to update the pin's state based on input from connected nodes
-        # For example, you might want to check if the pin is connected to any links and update its state accordingly
         for link in self.links:
-            # if the pin is an input pin, we can check the output pin of the link
+            
+            # only update links where this pin is an input
             if self.is_input():
-                for node in nodes:
-                    output_pin = node.get_pin(link.output_id)
-                    if output_pin:
-                        # Here you can implement logic to update the pin based on the output pin's state
-                        # For example, you might want to set some value or state based on the output pin
-                        
-                        # if the count of the output pin has changed, we can update the link
-                        if output_pin.get_change_counter() > link.count:
-                            link.count = output_pin.get_change_counter()
-                            # Update the link's validity based on the output pin's value
-                            link.valid = self.set_value(output_pin.get_value())
+
+                # find the link's output pin
+                output_pin = link.output_node.get_pin(link.output_id)
+                if output_pin:
+
+                    # only update if there is a new output value
+                    if output_pin.get_change_counter() > link.count:
+                        link.count = output_pin.get_change_counter()
+                        # update the input pin's value from the output pin. link.valid is true if the type check is passed, and false otherwise. 
+                        link.valid = self.set_value(output_pin.get_value())
     
     def on_output_update(self):
         """Override this method to handle updates to the output pin"""
@@ -149,6 +147,8 @@ class Pin:
 
 class Node:
     pins: list[Pin] = None  # List of pins connected to this node
+
+
     def __init__(self, node_id, label, position=None):
         self.label = label
         self.node_id = ed.NodeId(node_id)
@@ -159,10 +159,12 @@ class Node:
         self.edit_mode = False  # Flag to indicate if the node is in edit mode
 
     def add_pin(self, pin_id:int, pin_kind:ed.PinKind, name:str="", left:bool=True, value_type:type=None):
+        """Adds a new pin to this node"""
         self.pins.append(Pin(id=ed.PinId(pin_id), kind=pin_kind, name=name, left=left, value_type=value_type))
         return self.pins[-1]  # Return the newly added pin
 
     def remove_pin(self, pin_id: ed.PinId):
+        """Removes a pin from this node by its ID"""
         self.pins = [pin for pin in self.pins if pin.id != pin_id]
 
     def get_pin(self, pin_id: ed.PinId):
@@ -172,16 +174,34 @@ class Node:
                 return pin
         return None
 
-    def add_link(self, link_id: ed.LinkId, input_pin_id: ed.PinId, output_pin_id: ed.PinId):
-        # the gui has already checked that the link is valid
+    def add_link(self, link_id: ed.LinkId, input_pin_id: ed.PinId, output_pin_id: ed.PinId, nodes: List['Node']):
+        """Adds a new link to this Node if this node contains either of the given pins, if the Pin is an input pin and already has a connection, or if the pin doesnt exist on this node return false, otherwise true"""
+        # check if either pin is assigned to this node 
         for pin in self.pins:
             if pin.id == input_pin_id or pin.id == output_pin_id:
+
                 # if the pin is an input pin check that there isnt already an output link connected
                 if pin.is_input():
+                    input_node = self
                     if len(pin.links) > 0:
-                        # If there is already a link, we can reject the new link
                         return False
-                pin.add_link(LinkInfo(id=link_id, input_id=input_pin_id, output_id=output_pin_id))
+                    # the pin is on this node and is an input pin
+                    else:
+                        # find the output node
+                        for node in nodes:
+                            if node.get_pin(input_pin_id) != None or node.get_pin(output_pin_id) != None:
+                                output_node = node
+
+                # the pin is on this node and is an output pin
+                else:
+                    output_node = self
+                    # find the input node
+                    for node in nodes:
+                        if node.get_pin(input_pin_id) != None or node.get_pin(output_pin_id) != None:
+                            input_node = node
+
+                # add the new link to the pin
+                pin.add_link(LinkInfo(id=link_id, input_id=input_pin_id, output_id=output_pin_id, input_node=input_node, output_node=output_node))
                 return True
         return False
         
@@ -193,9 +213,11 @@ class Node:
             pin.remove_link(link_id)
 
     def set_position(self, x, y):
+        """sets the screen position of the node"""
         self.position = (x, y)
 
     def get_position(self):
+        """get the screen position of the node"""
         return self.position
     
     def on_frame(self):
@@ -285,9 +307,10 @@ class Node:
 
         ed.end_node()
 
-    def on_input_update(self, nodes: List['Node']):
+    def on_input_update(self):
+        """Called at the beginning of each frame before drawing anything to update all input pins"""
         for pin in self.pins:
-            pin.on_input_update(nodes)
+            pin.on_input_update()
 
     def draw_header(self):
         """Override this method to draw custom header content"""
@@ -308,10 +331,6 @@ class Node:
             if imgui.invisible_button(f"{self.label}##{self.node_id}", imgui.calc_text_size(self.label)):
                 print(f"Node {self.label} clicked")
                 self.edit_mode = True
-    
-        
-        
-        
 
     def draw_content(self):
         """Override this method to draw custom content inside the node"""

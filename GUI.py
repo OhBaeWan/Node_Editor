@@ -108,7 +108,7 @@ class GUI:
         ed.begin("My Editor", imgui.ImVec2(0.0, 0.0))
 
         for node in self.nodes:
-            node.on_input_update(self.nodes)
+            node.on_input_update()
             
         for node in self.nodes:
             node.on_frame()
@@ -161,8 +161,8 @@ class GUI:
                                 # If both pins are None, we can reject the link.
                                 ed.reject_new_item()
                             else:
-                                if input_node.add_link(link_id, input_pin.id, output_pin.id):
-                                    output_node.add_link(link_id, input_pin.id, output_pin.id)
+                                if input_node.add_link(link_id, input_pin.id, output_pin.id, self.nodes):
+                                    output_node.add_link(link_id, input_pin.id, output_pin.id, self.nodes)
                             # Draw new link.
                             #ed.link(link_id, input_pin_id, output_pin_id)
             '''
