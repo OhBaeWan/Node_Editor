@@ -53,7 +53,7 @@ class LinkInfo:
     input_id: ed.PinId
     output_id: ed.PinId
     valid: bool = True  # Flag to indicate if the link is valid
-    count: int = 0  # Counter to track the last count from the output pin
+    count: int = -1  # Counter to track the last count from the output pin
 
 
 class Pin:
@@ -122,8 +122,11 @@ class Pin:
                         # if the count of the output pin has changed, we can update the link
                         if output_pin.get_change_counter() > link.count:
                             link.count = output_pin.get_change_counter()
+                            print(f"Updating link {link.id} from {link.output_id} to {link.input_id} with new value {output_pin.get_value()}")
                             # Update the link's validity based on the output pin's value
                             link.valid = self.set_value(output_pin.get_value())
+                            return True
+        return False
     
     def on_output_update(self):
         """Override this method to handle updates to the output pin"""
@@ -199,6 +202,7 @@ class Node:
         return self.position
     
     def on_frame(self):
+        excepted = None
         """Called at each frame to update the node's GUI"""
         ed.begin_node(self.node_id)
 
@@ -243,7 +247,13 @@ class Node:
                 print(f"Added new pin {new_pin_id} to node {self.node_id}")
                     
         ImGuiEx.next_column()
-        self.draw_content()
+        try:
+            self.draw_content()
+        except Exception as e:
+            #ImGuiEx.end_column()
+            #ed.end_node()
+            excepted = e
+            #raise Exception(f"Error drawing content for node {self.label}: {e}")
         ImGuiEx.next_column()
         for pin in self.pins:
             if pin.left == self.flipped:
@@ -283,7 +293,13 @@ class Node:
         #    for link in pin.links:
         #        imgui.text(f"Link from {link.output_id} to {link.input_id}")
 
+
+        if excepted is not None:
+            imgui.text_colored((1,0,0,1),f"Error: {excepted.with_traceback(None)}")
+
+
         ed.end_node()
+        
 
     def on_input_update(self, nodes: List['Node']):
         for pin in self.pins:

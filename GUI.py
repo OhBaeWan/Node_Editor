@@ -10,6 +10,9 @@ from imgui_bundle.immapp import static, run_anon_block
 
 from Node import Node, ID
 
+import os
+import importlib.util
+
 
 
 
@@ -27,19 +30,34 @@ class GUI:
     def __init__(self):
         self.nodes = []
 
+    def error_window(self, message: str):
+        """Display an error message in a window"""
+        imgui.open_popup(f"Error##{message}")
+        if imgui.begin_popup_modal(f"Error##{message}", True):
+            imgui.text(message)
+            if imgui.button(f"OK##{message}"):
+                imgui.close_current_popup()
+            imgui.end_popup()
 
-    def discover_nodes(self):
-        """Discover nodes in the Node directory and returns a list of Node classes"""
-        import os
-        import importlib.util
 
-        output = []
+    def discover_nodes(self, path: str = None):
+        """Discover nodes in the Node directory and display them in a menu"""
 
-        node_dir = os.path.dirname(__file__) + "/Nodes"
-        for filename in os.listdir(node_dir):
+        for filename in os.listdir(path):
+            # check if the file is a directory and recursively import all Python files
+            if filename.startswith("_"):
+                continue
+            if os.path.isdir(os.path.join(path, filename)):
+                # create a new menu item for the subdirectory
+                
+                if imgui.begin_menu(filename):
+                    # Recursively discover nodes in the subdirectory
+                    self.discover_nodes(os.path.join(path, filename))
+                    imgui.end_menu()
+
             if filename.endswith(".py") and filename != "Node.py":
                 module_name = filename[:-3]
-                module_path = os.path.join(node_dir, filename)
+                module_path = os.path.join(path, filename)
                 spec = importlib.util.spec_from_file_location(module_name, module_path)
                 if spec is not None:
                     module = importlib.util.module_from_spec(spec)
@@ -47,10 +65,21 @@ class GUI:
                     # Check if the module has a class that inherits from Node
                     for name, obj in module.__dict__.items():
                         if isinstance(obj, type) and issubclass(obj, Node) and obj is not Node:
-                            output.append(obj)
-                            #print(f"Discovered node: {obj.__name__} from {module_name}")
+                            _, clicked = imgui.menu_item(name, "", False)
+                            if clicked:
+                                node_id = ID.next_id()
+                                node = obj(node_id, name)
+                                # add a default pin to the node
+                                #node.add_pin(ID.next_id(), ed.PinKind.input, "Input Pin", left=True)
+                                #node.add_pin(ID.next_id(), ed.PinKind.output, "Output Pin", left=False)
+                                self.nodes.append(node)
+                                node.on_frame() 
 
-        return output
+    
+
+    def display_nodes_options(self, options):
+        """Display a list of node options in a menue"""
+        # 
 
 
     def on_frame(self):
@@ -89,18 +118,7 @@ class GUI:
                 
                 # dynamically add more nodes here by loading
                 # the Node directory and creating instances of the Node classes
-                node_classes = self.discover_nodes()
-                for node_class in node_classes:
-                    node_name = node_class.__name__
-                    _, clicked = imgui.menu_item(node_name, "", False)
-                    if clicked:
-                        node_id = ID.next_id()
-                        node = node_class(node_id, node_name)
-                        # add a default pin to the node
-                        #node.add_pin(ID.next_id(), ed.PinKind.input, "Input Pin", left=True)
-                        #node.add_pin(ID.next_id(), ed.PinKind.output, "Output Pin", left=False)
-                        self.nodes.append(node)
-                        node.on_frame() 
+                self.discover_nodes(os.path.dirname(__file__) + "/Nodes")
 
                 imgui.end_menu()
             imgui.end_main_menu_bar()
@@ -108,11 +126,17 @@ class GUI:
         ed.begin("My Editor", imgui.ImVec2(0.0, 0.0))
 
         for node in self.nodes:
-            node.on_input_update(self.nodes)
-            
+            try:
+                node.on_input_update(self.nodes)
+            except Exception as e:
+                self.error_window(f"Error updating input for {node.label}: {e}")
+
         for node in self.nodes:
-            node.on_frame()
-        
+            try:
+                node.on_frame()
+            except Exception as e:
+                #self.error_window(f"Error drawing in node {node.label}: {e}")
+                pass
         
 
 
