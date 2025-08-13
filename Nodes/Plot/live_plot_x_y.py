@@ -6,7 +6,7 @@ from imgui_bundle import (
     immvision,
     imgui_fig
 )
-from Node import Node, LinkInfo, Pin
+from Node import Node, LinkInfo
 from Node import ID  # Assuming ID is defined in Node.py
 from numpy import array, linspace
 import time
@@ -15,56 +15,28 @@ matplotlib.use('Agg')  # Use the Agg backend for matplotlib to avoid GUI issues
 import matplotlib.pyplot as plt
 
 
-class trace():
-    def __init__(self, x:Pin, y:Pin, x_data:Pin, y_data:Pin, reset:Pin):
-        self.x = x
-        self.y = y
-        self.x_data = x_data
-        self.y_data = y_data
-        self.reset = reset
-
-        self.times = []
-        self.start_time = time.time()
-
-    def draw_content(self):
-        # reset data if reset pin is triggered
-        if self.reset.get_changed_this_frame():
-            self.x_data.set_value([0, 0], True)
-            self.y_data.set_value([0, 0], True)
-            self.times = []
-            self.start_time = time.time()
-            return True
-        
-        # add new data if input pin is connected
-        if self.x.get_changed_this_frame():
-            if len(self.x.links) > 0 and len(self.y.links) > 0:
-                current_time = time.time() - self.start_time
-                self.x_data.set_value(self.x_data.get_value().append(self.x.get_value()), True)
-                self.y_data.set_value(self.y_data.get_value().append(self.y.get_value()), True)
-                self.times.append(current_time)
-                return True
-        return False
-    
-    def plot(self, ax, max_length):
-        ax.plot(self.x_data.get_value()[-max_length:], self.y_data.get_value()[-max_length:])
 
 class live_plot_x_y(Node):
     def __init__(self, node_id, name="Live Plot X Y"):
         super().__init__(node_id, name)
+        
+        self.x = self.add_pin(ID.next_id(), ed.PinKind.input, "x", left=True, value_type=None)
+        self.x.set_value(0, False)
+
+        self.y = self.add_pin(ID.next_id(), ed.PinKind.input, "y", left=True, value_type=None)
+        self.y.set_value(0, False)
+
+        self.x_data = self.add_pin(ID.next_id(), ed.PinKind.output, "X data[]", left=False, value_type=list)
+        self.y_data = self.add_pin(ID.next_id(), ed.PinKind.output, "Y data[]", left=False, value_type=list)
+
+        self.x_data.set_value([0, 0], False)
+        self.y_data.set_value([0, 0], False)
 
         self.reset = self.add_pin(ID.next_id(), ed.PinKind.input, "Reset", left=True, value_type=None)
-        self.traces = []
-        x = self.add_pin(ID.next_id(), ed.PinKind.input, "X Data", left=True, value_type=list)
-        x.set_value([0, 0], False)
-        y = self.add_pin(ID.next_id(), ed.PinKind.input, "Y Data", left=True, value_type=list)
-        y.set_value([0, 0], False)
-        x_data = self.add_pin(ID.next_id(), ed.PinKind.output, "X Data[]", left=False, value_type=list)
-        x_data.set_value([0, 0], False)
-        y_data = self.add_pin(ID.next_id(), ed.PinKind.output, "Y Data[]", left=False, value_type=list)
-        y_data.set_value([0, 0], False)
+        self.reset.set_value(0, False)
 
-        self.traces.append(trace(x, y, x_data, y_data, self.reset))
-        
+        self.times = []
+        self.start_time = time.time()
 
         plt.style.use('dark_background')
         self.fig, self.ax = plt.subplots()
