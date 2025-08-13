@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List
-
+import time
 from imgui_bundle import (
     imgui,
     imgui_md,
@@ -72,15 +72,24 @@ class Pin:
 
         self._value = None  # You can add a value attribute if needed, e.g., for storing pin state
         self._value_type: type = value_type  # Type of the value, if needed
-        self._change_counter = 0  # Counter to track changes in the pin's value
+        self._change_counter = 0  # Counter to track changes in the pin's value 
+        self._changed_this_frame = False  # Flag to indicate if the pin has changed this frame
 
     def set_value(self, value, increment_change_counter: bool = True):
         """Set the value of this pin"""
         # check if the value is of the correct type, or a subclass of the expected type
+        if self._value_type is None:
+            self._value = value
+            if increment_change_counter:
+                self._change_counter += 1
+                self._changed_this_frame = True
+            return True
+        
         if value.__class__ == self._value_type or issubclass(value.__class__, self._value_type):
             self._value = value
             if increment_change_counter:
                 self._change_counter += 1
+                self._changed_this_frame = True
             return True
         else:
             print(f"Value type mismatch: expected {self._value_type}, got {value.__class__}")
@@ -93,6 +102,10 @@ class Pin:
     def get_change_counter(self):
         """Get the change counter of this pin"""
         return self._change_counter
+    
+    def get_changed_this_frame(self):
+        """Check if the pin has changed this frame"""
+        return self._changed_this_frame
 
     def add_link(self, link: LinkInfo):
         """Add a link to this pin"""
@@ -107,6 +120,7 @@ class Pin:
         return self.kind == ed.PinKind.input
 
     def on_input_update(self, nodes: List['Node']):
+        self._changed_this_frame = False
         """Update the pin based on input from connected nodes"""
         # This method can be used to update the pin's state based on input from connected nodes
         # For example, you might want to check if the pin is connected to any links and update its state accordingly
@@ -122,7 +136,7 @@ class Pin:
                         # if the count of the output pin has changed, we can update the link
                         if output_pin.get_change_counter() > link.count:
                             link.count = output_pin.get_change_counter()
-                            print(f"Updating link {link.id} from {link.output_id} to {link.input_id} with new value {output_pin.get_value()}")
+                            #print(f"Updating link {link.id} from {link.output_id} to {link.input_id} with new value {output_pin.get_value()}")
                             # Update the link's validity based on the output pin's value
                             link.valid = self.set_value(output_pin.get_value())
                             return True
@@ -160,6 +174,7 @@ class Node:
         self.flipped = False  # Flag to indicate if the node is flipped
 
         self.edit_mode = False  # Flag to indicate if the node is in edit mode
+        self.frame_time = time.time()  # Time of the last frame, used for FPS calculation
 
     def add_pin(self, pin_id:int, pin_kind:ed.PinKind, name:str="", left:bool=True, value_type:type=None):
         self.pins.append(Pin(id=ed.PinId(pin_id), kind=pin_kind, name=name, left=left, value_type=value_type))
@@ -231,8 +246,8 @@ class Node:
                 if self.edit_mode:
                     imgui.set_next_item_width(imgui.get_content_region_avail()[0] * 0.3)
                     changed, pin.name = imgui.input_text(f"##{pin.id}", pin.name, imgui.InputTextFlags_.enter_returns_true )
-                    if changed:
-                        self.edit_mode = False
+                    #if changed:
+                    #    self.edit_mode = False
                 else:
                     imgui.text(f"{pin.name}")
                     imgui.set_cursor_pos_x(imgui.get_cursor_pos_x() + imgui.calc_text_size(f"<- ").x )
@@ -248,7 +263,10 @@ class Node:
                     
         ImGuiEx.next_column()
         try:
+            #imgui.text(f"FPS: {1 / (time.time() - self.frame_time):.2f}")
+            self.frame_time = time.time()
             self.draw_content()
+            #imgui.text(f"Frame Time: {time.time() - self.frame_time:.2f} seconds")
         except Exception as e:
             #ImGuiEx.end_column()
             #ed.end_node()
@@ -263,8 +281,8 @@ class Node:
                 if self.edit_mode:
                     imgui.set_next_item_width(imgui.get_content_region_avail()[0] * 0.4)
                     changed, pin.name = imgui.input_text(f"##{pin.id}", pin.name, imgui.InputTextFlags_.enter_returns_true )
-                    if changed:
-                        self.edit_mode = False
+                    #if changed:
+                    #    self.edit_mode = False
                 else:
                     imgui.text(f"{pin.name}")
 
@@ -293,7 +311,9 @@ class Node:
         #    for link in pin.links:
         #        imgui.text(f"Link from {link.output_id} to {link.input_id}")
 
-
+        if self.edit_mode:
+            if imgui.button("Close Edit Mode"):
+                self.edit_mode = False
         if excepted is not None:
             imgui.text_colored((1,0,0,1),f"Error: {excepted.with_traceback(None)}")
 
@@ -314,8 +334,8 @@ class Node:
         if self.edit_mode:
             imgui.set_next_item_width(imgui.get_content_region_avail()[0] * 0.8)
             changed, self.label = imgui.input_text(f"##{self.node_id}", self.label, imgui.InputTextFlags_.enter_returns_true )
-            if changed:
-                self.edit_mode = False
+            #if changed:
+            #    self.edit_mode = False
         else:
             imgui.text(self.label)
 

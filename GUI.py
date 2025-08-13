@@ -106,6 +106,8 @@ class GUI:
                 imgui.end_menu()  
             # node creation menu
             if imgui.begin_menu("Create Node"):
+
+                '''
                 _, clicked = imgui.menu_item("New Node", "N", False)
                 if clicked:
                     node_id = ID.next_id()
@@ -115,7 +117,7 @@ class GUI:
                     node.add_pin(ID.next_id(), ed.PinKind.output, "Output Pin", left=False)
                     self.nodes.append(node)
                     node.on_frame()
-                
+                '''
                 # dynamically add more nodes here by loading
                 # the Node directory and creating instances of the Node classes
                 self.discover_nodes(os.path.dirname(__file__) + "/Nodes")
@@ -241,7 +243,7 @@ def main():
     config.settings_file = this_dir + "/Node_Editor.json"
     from imgui_bundle import immapp
 
-    immapp.run(gui, with_node_editor_config=config, with_markdown=True, window_size=(800, 600))
+    immapp.run(gui, with_node_editor_config=config, with_markdown=True, window_size=(800, 600), fps_idle=60)
 
 
 if __name__ == "__main__":
